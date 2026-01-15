@@ -188,7 +188,6 @@ def evaluate_model(model, X_test, y_test, is_dl=False):
 5. Evaluate using precision, recall, F1-score, ROC-AUC
 6. Save figures and tables
 
-*(All hyperparameters and random seeds are fixed for reproducibility.)*
 
 ---
 
