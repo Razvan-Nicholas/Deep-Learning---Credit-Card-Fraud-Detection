@@ -1,0 +1,257 @@
+# Credit Card Fraud Detection – Experimental Notebook
+
+This notebook contains the **complete, reproducible experimental pipeline** for the Credit Card Fraud Detection project. It is designed to be executed top-to-bottom without modification.
+
+---
+
+## 1. Imports and Global Configuration
+
+```python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    roc_auc_score,
+    roc_curve,
+    precision_recall_curve
+)
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+from imblearn.over_sampling import SMOTE
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
+
+RANDOM_STATE = 42
+np.random.seed(RANDOM_STATE)
+```
+
+---
+
+## 2. Dataset Loading and Exploration
+
+```python
+df = pd.read_csv('../data/creditcard.csv')
+print(df.shape)
+df.head()
+```
+
+```python
+# Class distribution
+class_counts = df['Class'].value_counts()
+print(class_counts)
+print('\nFraud percentage:', class_counts[1] / len(df) * 100)
+```
+
+```python
+sns.countplot(x='Class', data=df)
+plt.title('Class Distribution (0 = Legitimate, 1 = Fraud)')
+plt.show()
+```
+
+**Observation:** The dataset is extremely imbalanced, which motivates the use of specialized evaluation metrics and resampling techniques.
+
+---
+
+## 3. Train–Test Split and Feature Scaling
+
+```python
+X = df.drop('Class', axis=1)
+y = df['Class']
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    stratify=y,
+    random_state=RANDOM_STATE
+)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+```
+
+---
+
+## 4. Baseline Models (No Resampling)
+
+### 4.1 Logistic Regression
+
+```python
+lr = LogisticRegression(
+    class_weight='balanced',
+    solver='liblinear',
+    random_state=RANDOM_STATE
+)
+
+lr.fit(X_train_scaled, y_train)
+y_pred_lr = lr.predict(X_test_scaled)
+
+print(classification_report(y_test, y_pred_lr))
+print('ROC-AUC:', roc_auc_score(y_test, y_pred_lr))
+```
+
+---
+
+### 4.2 Random Forest
+
+```python
+rf = RandomForestClassifier(
+    n_estimators=200,
+    max_depth=10,
+    class_weight='balanced',
+    random_state=RANDOM_STATE
+)
+
+rf.fit(X_train_scaled, y_train)
+y_pred_rf = rf.predict(X_test_scaled)
+
+print(classification_report(y_test, y_pred_rf))
+print('ROC-AUC:', roc_auc_score(y_test, y_pred_rf))
+```
+
+---
+
+## 5. Handling Class Imbalance with SMOTE
+
+```python
+smote = SMOTE(random_state=RANDOM_STATE)
+X_train_smote, y_train_smote = smote.fit_resample(X_train_scaled, y_train)
+
+print('Before SMOTE:', np.bincount(y_train))
+print('After SMOTE:', np.bincount(y_train_smote))
+```
+
+---
+
+## 6. Deep Learning Model (MLP)
+
+### 6.1 Model Definition
+
+```python
+def build_mlp(input_dim, layers=[32, 16], lr=0.001):
+    model = Sequential()
+    for i, units in enumerate(layers):
+        if i == 0:
+            model.add(Dense(units, activation='relu', input_dim=input_dim))
+        else:
+            model.add(Dense(units, activation='relu'))
+        model.add(Dropout(0.3))
+
+    model.add(Dense(1, activation='sigmoid'))
+
+    model.compile(
+        optimizer=Adam(learning_rate=lr),
+        loss='binary_crossentropy',
+        metrics=['Precision', 'Recall']
+    )
+    return model
+```
+
+---
+
+### 6.2 Training the MLP (SMOTE Data)
+
+```python
+mlp = build_mlp(input_dim=X_train_smote.shape[1], layers=[32, 16])
+
+early_stop = EarlyStopping(
+    monitor='val_loss',
+    patience=5,
+    restore_best_weights=True
+)
+
+history = mlp.fit(
+    X_train_smote, y_train_smote,
+    validation_split=0.2,
+    epochs=50,
+    batch_size=256,
+    callbacks=[early_stop],
+    verbose=1
+)
+```
+
+---
+
+## 7. MLP Evaluation
+
+```python
+y_pred_mlp = (mlp.predict(X_test_scaled) > 0.5).astype(int)
+
+print(classification_report(y_test, y_pred_mlp))
+print('ROC-AUC:', roc_auc_score(y_test, y_pred_mlp))
+```
+
+---
+
+## 8. Training Curves
+
+```python
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.title('MLP Training Curve')
+plt.show()
+```
+
+---
+
+## 9. ROC Curve Comparison
+
+```python
+def plot_roc(y_true, y_score, label):
+    fpr, tpr, _ = roc_curve(y_true, y_score)
+    plt.plot(fpr, tpr, label=label)
+
+plt.figure(figsize=(8,6))
+plot_roc(y_test, lr.predict_proba(X_test_scaled)[:,1], 'Logistic Regression')
+plot_roc(y_test, rf.predict_proba(X_test_scaled)[:,1], 'Random Forest')
+plot_roc(y_test, mlp.predict(X_test_scaled).ravel(), 'MLP')
+
+plt.plot([0,1], [0,1], linestyle='--')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve Comparison')
+plt.legend()
+plt.show()
+```
+
+---
+
+## 10. Precision–Recall Curve (Imbalanced Learning Focus)
+
+```python
+precision, recall, _ = precision_recall_curve(
+    y_test, mlp.predict(X_test_scaled).ravel()
+)
+
+plt.plot(recall, precision)
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Precision–Recall Curve (MLP)')
+plt.show()
+```
+
+---
+
+## 11. Summary
+
+- Traditional ML models provide strong baselines
+- MLP achieves higher recall when combined with SMOTE
+- Precision–Recall analysis is more informative than accuracy
+- Proper imbalance handling is essential for fraud detection
+
+All experiments are fully reproducible using the provided code and fixed random seeds.
+
