@@ -1,5 +1,5 @@
 # Deep-Learning---Credit-Card-Fraud-Detection
-This repository serves the purpose of showcasing a Deep Learning project about Credit Card Fraud Detection using Deep Learning
+This repository serves the purpose of showcasing a Deep Learning project about Credit Card Fraud Detection using Deep Learning.
 This repository contains a Deep Learning project for credit card fraud detection. The project follows a research-paper-style methodology and compares a **Multi-Layer Perceptron (MLP)** against traditional machine learning models on a highly imbalanced real-world dataset.
 
 ---
