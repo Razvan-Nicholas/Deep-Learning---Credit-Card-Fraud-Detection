@@ -24,7 +24,6 @@ credit-card-fraud-detection/
 │
 ├── requirements.txt
 ├── README.md
-└── LICENSE
 ```
 
 ---
